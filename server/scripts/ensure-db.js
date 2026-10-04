@@ -11,6 +11,8 @@ import { createRequire } from 'node:module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(__dirname, '..');
+const projectRoot = path.resolve(serverRoot, '..');
+const webDist = path.join(projectRoot, 'web', 'dist', 'index.html');
 const require = createRequire(import.meta.url);
 
 function run(cmd, args) {
@@ -45,7 +47,22 @@ if (!prismaClientIsGenerated()) {
   }
 }
 
-// --- 2) Provisiona o banco (apenas SQLite local) ---
+// --- 2) Garante que o frontend (web/dist) esteja compilado ---
+if (!fs.existsSync(webDist)) {
+  console.log('→ Compilando o frontend (web/dist)...');
+  const build = spawnSync('npm', ['--workspace', 'web', 'run', 'build'], {
+    stdio: 'inherit',
+    env: process.env,
+    cwd: projectRoot,
+    shell: process.platform === 'win32',
+  });
+  if (build.status !== 0) {
+    // Não aborta o boot: a API ainda sobe; o app.js mostra aviso de frontend não compilado.
+    console.warn('⚠ Falha ao compilar o frontend. A API subirá, mas a interface não será servida.');
+  }
+}
+
+// --- 3) Provisiona o banco (apenas SQLite local) ---
 function dbFilePath() {
   const url = process.env.DATABASE_URL || '';
   if (url.startsWith('file:')) return url.slice(5);

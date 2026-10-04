@@ -4,6 +4,9 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
@@ -19,17 +22,32 @@ import adminRouter from './modules/admin/routes.js';
 import { getIntegrationsStatus } from './modules/integrations/service.js';
 import { hasOpenAI } from './config/index.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Caminho do build do frontend (web/dist), relativo a server/src.
+const WEB_DIST = path.resolve(__dirname, '../../web/dist');
+
 export function createApp() {
   // Garante que todas as ferramentas estejam registradas no boot.
   registerAllTools();
 
   const app = express();
+  const serveFrontend = fs.existsSync(path.join(WEB_DIST, 'index.html'));
 
   app.set('trust proxy', 1);
-  app.use(helmet());
+
+  // Helmet: desliga a CSP padrão quando servimos o SPA (ela quebraria scripts/estilos).
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+
+  // CORS: em produção servindo o próprio frontend, as chamadas são same-origin.
+  // Mantém CORS liberado para a origem do frontend em dev (Vite :5173).
   app.use(
     cors({
-      origin: config.webOrigin,
+      origin: config.isProd ? true : config.webOrigin,
       credentials: true,
     }),
   );
@@ -37,8 +55,9 @@ export function createApp() {
   app.use(cookieParser());
   app.use(pinoHttp({ logger }));
 
-  // Rate limit global.
+  // Rate limit só nas rotas de API (não nos assets estáticos).
   app.use(
+    '/api',
     rateLimit({
       windowMs: config.rateLimit.windowMs,
       max: config.rateLimit.max,
@@ -52,6 +71,7 @@ export function createApp() {
     res.json({
       ok: true,
       ai: hasOpenAI() ? 'ready' : 'missing_openai_key',
+      frontend: serveFrontend ? 'served' : 'not_built',
       integrations: await getIntegrationsStatus(),
     });
   });
@@ -63,7 +83,26 @@ export function createApp() {
   app.use('/api/files', filesRouter);
   app.use('/api/admin', adminRouter);
 
+  // 404 apenas para rotas /api desconhecidas.
   app.use('/api', notFoundHandler);
+
+  // --- Frontend (SPA) ---
+  if (serveFrontend) {
+    // Assets com cache; index.html sem cache (para pegar novas versões).
+    app.use(express.static(WEB_DIST, { index: false, maxAge: '1h' }));
+    // Fallback SPA: qualquer rota não-API devolve o index.html.
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(WEB_DIST, 'index.html'));
+    });
+  } else {
+    app.get('/', (req, res) => {
+      res.status(200).json({
+        service: 'Sempre com Você — API',
+        note: 'Frontend não compilado. Rode "npm run build" para servir a interface, ou acesse /api/health.',
+      });
+    });
+  }
+
   app.use(errorHandler);
 
   return app;
