@@ -24,6 +24,29 @@ function run(cmd, args) {
   });
 }
 
+// Resolve o executável da CLI do Prisma de forma portável:
+// 1) binário local em node_modules/.bin (server ou raiz do monorepo)
+// 2) o JS da CLI do pacote 'prisma' chamado via node (independe de PATH)
+// 3) por último, 'npx prisma' (fallback)
+function runPrisma(args) {
+  const binName = process.platform === 'win32' ? 'prisma.cmd' : 'prisma';
+  const candidates = [
+    path.join(serverRoot, 'node_modules', '.bin', binName),
+    path.join(projectRoot, 'node_modules', '.bin', binName),
+  ];
+  for (const bin of candidates) {
+    if (fs.existsSync(bin)) return run(bin, args);
+  }
+  // Tenta localizar o entrypoint JS do pacote 'prisma' e rodar via node.
+  try {
+    const prismaPkg = require.resolve('prisma/build/index.js');
+    return run(process.execPath, [prismaPkg, ...args]);
+  } catch {
+    /* segue para npx */
+  }
+  return run('npx', ['prisma', ...args]);
+}
+
 // --- 1) Garante que o Prisma Client esteja gerado ---
 function prismaClientIsGenerated() {
   try {
@@ -31,8 +54,12 @@ function prismaClientIsGenerated() {
     // Verificamos a presença dos artefatos gerados em .prisma/client.
     const base = path.dirname(require.resolve('@prisma/client'));
     const generated = path.resolve(base, '../.prisma/client');
-    return fs.existsSync(path.join(generated, 'index.js')) || fs.existsSync(path.join(generated, 'default.js'))
-      && fs.readdirSync(generated).some((f) => f.endsWith('.node') || f.includes('query'));
+    // Considera gerado se existir o entrypoint E algum artefato real do engine/schema.
+    const hasEntry = fs.existsSync(path.join(generated, 'index.js')) ||
+      fs.existsSync(path.join(generated, 'default.js'));
+    if (!hasEntry) return false;
+    const files = fs.readdirSync(generated);
+    return files.some((f) => f.endsWith('.node') || f.includes('query') || f === 'schema.prisma');
   } catch {
     return false;
   }
@@ -40,7 +67,7 @@ function prismaClientIsGenerated() {
 
 if (!prismaClientIsGenerated()) {
   console.log('→ Gerando o Prisma Client...');
-  const gen = run('npx', ['prisma', 'generate']);
+  const gen = runPrisma(['generate']);
   if (gen.status !== 0) {
     console.error('Falha ao gerar o Prisma Client.');
     process.exit(1);
@@ -77,7 +104,7 @@ if (file) {
   const exists = fs.existsSync(file) && fs.statSync(file).size > 0;
   if (!exists) {
     console.log('→ Primeiro arranque: criando banco SQLite e aplicando schema...');
-    const push = run('npx', ['prisma', 'db', 'push', '--skip-generate']);
+    const push = runPrisma(['db', 'push', '--skip-generate']);
     if (push.status !== 0) {
       console.error('Falha ao criar o banco.');
       process.exit(1);
