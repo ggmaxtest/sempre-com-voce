@@ -33,6 +33,7 @@ export default function Chat({ projectId }) {
   const [attachments, setAttachments] = useState([]);
   const [quickActions, setQuickActions] = useState([]);
   const [task, setTask] = useState(null); // { id, goal, plan:[{label,status}], events:[], status }
+  const [turbo, setTurbo] = useState(false); // #12 Modo Turbo / Resolver
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -66,7 +67,7 @@ export default function Chat({ projectId }) {
 
     let acc = '';
     await sendChat(
-      { conversationId: id, projectId, message: content, attachments: attachIds },
+      { conversationId: id, projectId, message: content, attachments: attachIds, turbo },
       {
         onMeta: ({ conversationId }) => {
           if (!id && conversationId) {
@@ -189,17 +190,24 @@ export default function Chat({ projectId }) {
             ))}
           </div>
         )}
-        <div className="composer">
+        <div className={`composer ${turbo ? 'turbo-on' : ''}`}>
           <input ref={fileInputRef} type="file" hidden onChange={onFilePick}
             accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,.txt,.json" />
           <button className="btn-ghost" style={{ padding: 8 }} onClick={() => fileInputRef.current?.click()} title="Anexar arquivo">
             <Icon.attach />
           </button>
+          <button
+            className={`turbo-btn ${turbo ? 'active' : ''}`}
+            onClick={() => setTurbo((v) => !v)}
+            title={turbo ? 'Modo Resolver ativo: a IA planeja e executa com vários agentes' : 'Ativar Modo Resolver (⚡)'}
+          >
+            ⚡ Resolver
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            placeholder="Conte o que você precisa…"
+            placeholder={turbo ? 'Diga seu objetivo — ex.: "Quero lançar meu produto"…' : 'Conte o que você precisa…'}
             rows={1}
             onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 180) + 'px'; }}
           />
@@ -207,6 +215,11 @@ export default function Chat({ projectId }) {
             {sending ? <span className="spinner" style={{ borderTopColor: '#fff' }} /> : <Icon.send />}
           </button>
         </div>
+        {turbo && (
+          <div className="turbo-hint">
+            ⚡ <b>Modo Resolver ativo</b> — a IA vai entender seu objetivo, planejar as etapas, acionar os agentes necessários e entregar o resultado. Acompanhe o progresso na Central de Tarefas.
+          </div>
+        )}
       </div>
     </>
   );

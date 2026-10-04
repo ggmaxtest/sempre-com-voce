@@ -12,16 +12,25 @@ import { logger } from '../../utils/logger.js';
 /**
  * Classifica a intenção e monta um plano. Retorna objeto do plano.
  */
-export async function plan({ userMessage, projectName, hasFiles, hasImages }) {
+export async function plan({ userMessage, projectName, hasFiles, hasImages, turbo = false }) {
   const openai = getOpenAI();
-  const sys = ORCHESTRATOR_PROMPT
+  let sys = ORCHESTRATOR_PROMPT
     .replace('{{TOOLS}}', toolCatalog())
     .replace('{{PROJECT}}', projectName || 'nenhum')
     .replace('{{HAS_FILES}}', hasFiles ? 'sim' : 'não')
     .replace('{{HAS_IMAGES}}', hasImages ? 'sim' : 'não');
 
+  // #12 Modo Turbo: instrui o orquestrador a tratar como tarefa COMPLEXA,
+  // montando um plano completo (vários agentes + etapas), estilo "Faça por Mim".
+  if (turbo) {
+    sys += `\n\nMODO TURBO ATIVO: trate este pedido como uma tarefa COMPLEXA ("complexity":"complex"). ` +
+      `Monte um plano completo e acionável, selecionando TODOS os agentes realmente necessários na ordem lógica ` +
+      `(ex.: pesquisa → mercado → concorrentes → produto → marketing → copy → imagem → campanha) e preenchendo "steps" ` +
+      `com etapas claras. Só use "clarificationNeeded" se for IMPOSSÍVEL prosseguir sem uma informação essencial.`;
+  }
+
   const res = await openai.chat.completions.create({
-    model: selectModel({ kind: 'chat', complexity: 'simple' }),
+    model: selectModel({ kind: 'chat', complexity: turbo ? 'complex' : 'simple' }),
     temperature: 0.2,
     response_format: { type: 'json_object' },
     messages: [
@@ -37,14 +46,14 @@ export async function plan({ userMessage, projectName, hasFiles, hasImages }) {
     parsed = {};
   }
 
-  return normalizePlan(parsed, { userMessage, hasFiles, hasImages });
+  return normalizePlan(parsed, { userMessage, hasFiles, hasImages, turbo });
 }
 
 /**
  * Normaliza/valida o plano retornado pelo modelo, com fallbacks seguros.
  * Função pura (testável sem rede).
  */
-export function normalizePlan(parsed, { userMessage = '', hasFiles = false, hasImages = false } = {}) {
+export function normalizePlan(parsed, { userMessage = '', hasFiles = false, hasImages = false, turbo = false } = {}) {
   const agents = Array.isArray(parsed?.agents)
     ? parsed.agents.filter((a) => AGENT_NAMES.includes(a))
     : [];
@@ -55,14 +64,18 @@ export function normalizePlan(parsed, { userMessage = '', hasFiles = false, hasI
   }
   if (agents.length === 0) agents.push('general');
 
+  // Turbo força tratamento complexo (multiagente + etapas).
+  const complexity = turbo || parsed?.complexity === 'complex' ? 'complex' : 'simple';
+
   return {
     intent: parsed?.intent || userMessage.slice(0, 120),
-    complexity: parsed?.complexity === 'complex' ? 'complex' : 'simple',
+    complexity,
     agents,
     needsResearch: Boolean(parsed?.needsResearch),
     needsFiles: Boolean(parsed?.needsFiles),
     steps: Array.isArray(parsed?.steps) ? parsed.steps : [],
     clarificationNeeded: parsed?.clarificationNeeded || null,
+    turbo,
   };
 }
 

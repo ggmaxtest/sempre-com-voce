@@ -78,6 +78,7 @@ const sendSchema = z.object({
   message: z.string().min(1).max(20000),
   attachments: z.array(z.string()).optional(), // fileIds
   confirmed: z.boolean().optional(),
+  turbo: z.boolean().optional(), // #12 Modo Turbo: força execução multiagente completa
 });
 
 chatRouter.post('/send', requireAuth, async (req, res, next) => {
@@ -179,11 +180,13 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       projectName: project?.name,
       hasFiles,
       hasImages,
+      turbo: Boolean(body.turbo),
     });
     send('plan', {
       intent: planObj.intent,
       agents: planObj.agents,
       complexity: planObj.complexity,
+      turbo: Boolean(body.turbo),
     });
 
     // #13 Central de Tarefas: tarefas complexas viram Task REAL com eventos reais.

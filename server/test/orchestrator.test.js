@@ -33,6 +33,12 @@ describe('Orquestrador — normalização de plano', () => {
     expect(p.agents.length).toBe(4);
     expect(p.steps.length).toBe(2);
   });
+
+  it('Modo Turbo força complexidade complexa mesmo se o modelo disser simples', () => {
+    const p = normalizePlan({ complexity: 'simple', agents: ['general'] }, { turbo: true });
+    expect(p.complexity).toBe('complex');
+    expect(p.turbo).toBe(true);
+  });
 });
 
 describe('Agentes — menor privilégio de ferramentas', () => {
