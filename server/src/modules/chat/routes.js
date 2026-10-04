@@ -7,9 +7,15 @@ import { plan as buildPlan, execute as runPlan } from '../../ai/orchestrator/ind
 import { recall, remember } from '../../ai/memory/index.js';
 import { recordUsage } from '../usage/service.js';
 import * as credits from '../credits/service.js';
-import { estimateCostMicroUsd } from '../../ai/model-router/index.js';
+import { estimateCostMicroUsd, selectModel } from '../../ai/model-router/index.js';
 import { hasOpenAI } from '../../config/index.js';
 import { parseJSON } from '../../utils/json.js';
+import { chatStream } from '../../ai/providers/openai.js';
+import {
+  buildQuickActionMessages,
+  QUICK_ACTION_KEYS,
+  QUICK_ACTION_CATALOG,
+} from '../../ai/prompts/quick-actions.js';
 
 export const chatRouter = Router();
 
@@ -277,6 +283,112 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
     res.end();
   } catch (e) {
     // Se o SSE já começou, envia erro pelo stream; senão, delega ao handler.
+    if (res.headersSent) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
+      return res.end();
+    }
+    next(e);
+  }
+});
+
+// --- #15 AÇÕES RÁPIDAS ---------------------------------------------------
+// Catálogo (seguro para o frontend; sem instruções internas).
+chatRouter.get('/quick-actions', requireAuth, (req, res) => {
+  res.json({ actions: QUICK_ACTION_CATALOG });
+});
+
+const refineSchema = z.object({
+  conversationId: z.string().optional(),
+  messageId: z.string().optional(),        // id da mensagem original (quando persistida)
+  content: z.string().min(1).max(30000),   // conteúdo original (preservado)
+  action: z.enum(QUICK_ACTION_KEYS),
+  context: z.string().max(4000).optional(),
+});
+
+// Refina um conteúdo existente com uma ação rápida. Streaming (SSE).
+// Preserva o original: cria uma NOVA mensagem assistant com o resultado.
+chatRouter.post('/refine', requireAuth, async (req, res, next) => {
+  try {
+    if (!hasOpenAI()) {
+      throw new AppError('IA indisponível: configure OPENAI_API_KEY.', 503, 'AI_UNAVAILABLE');
+    }
+    const body = refineSchema.parse(req.body);
+    const userId = req.user.id;
+
+    if (!(await credits.hasCredits(userId, credits.CREDIT_COSTS.CHAT))) {
+      throw new AppError('Créditos insuficientes.', 402, 'INSUFFICIENT_CREDITS');
+    }
+
+    // Conversa é opcional: ações rápidas funcionam mesmo em conteúdo avulso.
+    let conversation = null;
+    if (body.conversationId) {
+      conversation = await prisma.conversation.findFirst({
+        where: { id: body.conversationId, userId },
+      });
+      if (!conversation) throw NotFound('Conversa não encontrada.');
+    }
+
+    const messages = buildQuickActionMessages(body.action, body.content, body.context);
+    if (!messages) throw new AppError('Ação inválida.', 400, 'BAD_REQUEST');
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const send = (event, data) =>
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+    send('status', { status: 'processando', action: body.action });
+
+    const model = selectModel({ kind: 'chat', complexity: 'simple' });
+    const started = Date.now();
+    let fullText = '';
+    let usage = null;
+    try {
+      for await (const chunk of chatStream({ model, messages, temperature: 0.7 })) {
+        if (chunk.type === 'delta') { fullText += chunk.text; send('delta', { text: chunk.text }); }
+        else if (chunk.type === 'usage') usage = chunk.usage;
+      }
+    } catch (e) {
+      send('error', { message: 'Falha ao processar a ação: ' + e.message });
+      return res.end();
+    }
+
+    // Persiste como NOVA mensagem (não destrói o original) quando há conversa.
+    if (conversation) {
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          role: 'ASSISTANT',
+          content: fullText,
+          meta: JSON.stringify({ quickAction: body.action, refinedFrom: body.messageId || null }),
+        },
+      });
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() },
+      });
+    }
+
+    try {
+      await credits.debit(userId, 'CHAT', credits.CREDIT_COSTS.CHAT, { quickAction: body.action });
+    } catch { /* saldo mudou; não bloqueia resultado já entregue */ }
+
+    await recordUsage({
+      userId,
+      projectId: conversation?.projectId,
+      kind: 'chat',
+      model,
+      agent: `quick:${body.action}`,
+      usage,
+      costMicroUsd: estimateCostMicroUsd(model, usage),
+      latencyMs: Date.now() - started,
+    });
+
+    send('done', { creditsLeft: await credits.getBalance(userId) });
+    res.end();
+  } catch (e) {
     if (res.headersSent) {
       res.write(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
       return res.end();

@@ -138,7 +138,19 @@ label { font-size: 13px; color: var(--text-dim); font-weight: 600; }
 .msg-bubble code { font-family: ui-monospace, monospace; font-size: 13px; }
 .msg-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 14px; }
 .msg-bubble th, .msg-bubble td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-.msg-actions { display: flex; gap: 4px; margin-top: 6px; }
+.msg-actions { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+
+/* #15 Ações rápidas */
+.quick-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; animation: fadeInUp 160ms ease both; }
+.qa-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+  padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg-elev); color: var(--text); transition: all var(--transition);
+}
+.qa-chip:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
+.qa-chip:disabled { opacity: 0.5; cursor: default; }
+.refined-block { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--primary); animation: fadeInUp 160ms ease both; }
+.refined-head { font-size: 12px; font-weight: 700; color: var(--primary); display: flex; align-items: center; }
 
 .status-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {

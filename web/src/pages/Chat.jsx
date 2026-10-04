@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { api, sendChat } from '../lib/api.js';
+import { api, sendChat, refineContent, getQuickActions } from '../lib/api.js';
 import { useAuth } from '../lib/store.js';
 import { Icon } from '../components/icons.jsx';
 
@@ -31,10 +31,12 @@ export default function Chat({ projectId }) {
   const [streamText, setStreamText] = useState('');
   const [streamSources, setStreamSources] = useState([]);
   const [attachments, setAttachments] = useState([]);
+  const [quickActions, setQuickActions] = useState([]);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => { loadConversation(id); }, [id]);
+  useEffect(() => { getQuickActions().then((d) => setQuickActions(d.actions || [])).catch(() => {}); }, []);
 
   async function loadConversation(convoId) {
     setPlan(null); setEvents([]); setStreamText(''); setStatus(null);
@@ -136,7 +138,7 @@ export default function Chat({ projectId }) {
           </div>
         ) : (
           <div className="chat-inner">
-            {messages.map((m, i) => <Message key={i} msg={m} onRegenerate={m.role === 'ai' && i === messages.length - 1 ? () => regenerate() : null} />)}
+            {messages.map((m, i) => <Message key={i} msg={m} conversationId={id} quickActions={quickActions} onRegenerate={m.role === 'ai' && i === messages.length - 1 ? () => regenerate() : null} />)}
 
             {(status || plan || events.length > 0) && (
               <div className="msg ai">
@@ -204,9 +206,28 @@ export default function Chat({ projectId }) {
   }
 }
 
-function Message({ msg, onRegenerate }) {
+function Message({ msg, onRegenerate, conversationId, quickActions = [] }) {
   const isUser = msg.role === 'user';
   const [copied, setCopied] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+  const [refining, setRefining] = useState(null); // action key em andamento
+  const [refined, setRefined] = useState(null);   // { action, text }
+
+  async function runAction(actionKey) {
+    if (refining) return;
+    setRefining(actionKey);
+    setRefined({ action: actionKey, text: '' });
+    let acc = '';
+    await refineContent(
+      { conversationId, content: msg.content, action: actionKey, messageId: msg.id },
+      {
+        onDelta: (t) => { acc += t; setRefined({ action: actionKey, text: acc }); },
+        onDone: () => setRefining(null),
+        onError: (e) => { setRefined({ action: actionKey, text: `⚠️ ${e.message}` }); setRefining(null); },
+      },
+    );
+  }
+
   return (
     <div className={`msg ${isUser ? 'user' : 'ai'}`}>
       <div className={`msg-avatar ${isUser ? 'user' : 'ai'}`}>{isUser ? '🙂' : '◐'}</div>
@@ -220,12 +241,52 @@ function Message({ msg, onRegenerate }) {
           )}
           {!isUser && <Sources sources={msg.meta?.sources} />}
         </div>
+
         {!isUser && (
           <div className="msg-actions">
             <button className="btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(msg.content); setCopied(true); setTimeout(() => setCopied(false), 1200); }}>
               <Icon.copy /> {copied ? 'Copiado' : 'Copiar'}
             </button>
             {onRegenerate && <button className="btn-ghost btn-sm" onClick={onRegenerate}><Icon.refresh /> Regenerar</button>}
+            {quickActions.length > 0 && (
+              <button className="btn-ghost btn-sm" onClick={() => setShowActions((v) => !v)}>
+                ✨ Ações rápidas
+              </button>
+            )}
+          </div>
+        )}
+
+        {!isUser && showActions && (
+          <div className="quick-actions">
+            {quickActions.map((a) => (
+              <button key={a.key} className="qa-chip" disabled={!!refining}
+                onClick={() => runAction(a.key)}>
+                {refining === a.key ? <span className="spinner" style={{ width: 12, height: 12 }} /> : a.emoji} {a.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!isUser && refined && (
+          <div className="refined-block">
+            <div className="refined-head">
+              {quickActions.find((a) => a.key === refined.action)?.emoji}{' '}
+              {quickActions.find((a) => a.key === refined.action)?.label || 'Refinado'}
+              {refining && <span className="spinner" style={{ width: 12, height: 12, marginLeft: 8 }} />}
+            </div>
+            <div className="msg-bubble" style={{ marginTop: 6 }}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{refined.text || '…'}</ReactMarkdown>
+            </div>
+            {!refining && refined.text && (
+              <div className="msg-actions">
+                <button className="btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(refined.text); }}>
+                  <Icon.copy /> Copiar
+                </button>
+                <button className="btn-ghost btn-sm" onClick={() => setRefined(null)}>
+                  ✕ Descartar (manter original)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

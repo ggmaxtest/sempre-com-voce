@@ -96,3 +96,51 @@ export async function sendChat(body, handlers = {}) {
     }
   }
 }
+
+/**
+ * #15 Ações rápidas — refina um conteúdo via SSE.
+ * handlers: { onStatus, onDelta, onDone, onError }
+ */
+export async function refineContent(body, handlers = {}) {
+  const res = await fetch(BASE + '/chat/refine', {
+    method: 'POST',
+    headers: headers(),
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    let message = 'Falha ao processar a ação.';
+    try { const j = await res.json(); message = j?.error?.message || message; } catch {}
+    handlers.onError?.({ message });
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split('\n\n');
+    buffer = chunks.pop() || '';
+    for (const chunk of chunks) {
+      const lines = chunk.split('\n');
+      let event = 'message'; let data = '';
+      for (const line of lines) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += line.slice(5).trim();
+      }
+      if (!data) continue;
+      let parsed; try { parsed = JSON.parse(data); } catch { continue; }
+      if (event === 'status') handlers.onStatus?.(parsed);
+      else if (event === 'delta') handlers.onDelta?.(parsed.text);
+      else if (event === 'done') handlers.onDone?.(parsed);
+      else if (event === 'error') handlers.onError?.(parsed);
+    }
+  }
+}
+
+// Catálogo de ações rápidas (seguro; sem instruções internas).
+export function getQuickActions() {
+  return api.get('/chat/quick-actions');
+}
