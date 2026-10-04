@@ -32,6 +32,7 @@ export default function Chat({ projectId }) {
   const [streamSources, setStreamSources] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [quickActions, setQuickActions] = useState([]);
+  const [task, setTask] = useState(null); // { id, goal, plan:[{label,status}], events:[], status }
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -56,7 +57,7 @@ export default function Chat({ projectId }) {
     if (!content || sending) return;
     setInput('');
     setSending(true);
-    setStatus('analisando'); setPlan(null); setEvents([]); setStreamText(''); setStreamSources([]);
+    setStatus('analisando'); setPlan(null); setEvents([]); setStreamText(''); setStreamSources([]); setTask(null);
     const attachIds = attachments.map((a) => a.id);
     const srcAcc = [];
     const srcSeen = new Set();
@@ -74,8 +75,20 @@ export default function Chat({ projectId }) {
         },
         onStatus: ({ status }) => setStatus(status),
         onPlan: (p) => { setPlan(p); setStatus(p.complexity === 'complex' ? 'processando' : 'criando'); },
+        onTask: (t) => setTask({ ...t, events: [], status: 'RUNNING' }),
+        onTaskDone: (t) => setTask((cur) => cur ? { ...cur, status: t.status } : cur),
         onEvent: (ev) => {
           setEvents((e) => [...e, ev]);
+          // Atualiza a tarefa com eventos reais do backend.
+          if (ev.type === 'agent_start' || ev.type === 'agent_end' || ev.type === 'tool_end') {
+            setTask((cur) => {
+              if (!cur) return cur;
+              const label = ev.type === 'tool_end' ? `🔧 ${ev.tool} ${ev.ok ? '✓' : '✗'}`
+                : ev.type === 'agent_start' ? `▶ Agente ${ev.agent}`
+                : `✓ Agente ${ev.agent}`;
+              return { ...cur, events: [...cur.events, { label, type: ev.type }] };
+            });
+          }
           if (ev.type === 'sources' && ev.sources?.length) {
             for (const x of ev.sources) {
               if (x.url && !srcSeen.has(x.url)) { srcSeen.add(x.url); srcAcc.push(x); }
@@ -151,6 +164,7 @@ export default function Chat({ projectId }) {
                       <span key={idx} className="chip dim">🔧 {e.tool}</span>
                     ))}
                   </div>
+                  {task && <TaskPanel task={task} />}
                   {streamText && (
                     <div className="msg-bubble" style={{ marginTop: 10 }}>
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
@@ -289,6 +303,33 @@ function Message({ msg, onRegenerate, conversationId, quickActions = [] }) {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function TaskPanel({ task }) {
+  const done = task.status === 'COMPLETED';
+  const failed = task.status === 'FAILED';
+  return (
+    <div className="task-panel">
+      <div className="task-head">
+        <span className="task-title">
+          {done ? '✅' : failed ? '❌' : <span className="spinner" style={{ width: 13, height: 13 }} />} Central de Tarefas
+        </span>
+        <span className="task-status">{done ? 'Concluída' : failed ? 'Falhou' : 'Em andamento'}</span>
+      </div>
+      <div className="task-steps">
+        {task.events.length === 0 && <div className="task-step pending">○ Planejando etapas…</div>}
+        {task.events.map((ev, i) => {
+          const isLast = i === task.events.length - 1 && !done && !failed;
+          return (
+            <div key={i} className={`task-step ${isLast ? 'running' : 'done'}`}>
+              {ev.label}
+            </div>
+          );
+        })}
+        {done && <div className="task-step done">✓ Entrega concluída</div>}
       </div>
     </div>
   );

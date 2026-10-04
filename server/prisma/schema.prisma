@@ -165,21 +165,39 @@ model Memory {
 // ---------------------------------------------------------------------------
 
 model Task {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  goal      String
-  status    String   @default("PENDING") // PENDING | RUNNING | WAITING_CONFIRMATION | COMPLETED | FAILED | CANCELLED
-  plan      String   @default("[]") // JSON
-  state     String   @default("{}") // JSON
-  result    String?  // JSON
-  error     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  conversationId String?
+  goal           String
+  status         String   @default("PENDING") // PENDING | RUNNING | WAITING_CONFIRMATION | COMPLETED | FAILED | CANCELLED
+  plan           String   @default("[]") // JSON (etapas do plano)
+  state          String   @default("{}") // JSON (progresso)
+  result         String?  // JSON
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  events         TaskEvent[]
 
   @@index([userId])
+  @@index([conversationId])
+}
+
+// Eventos REAIS de uma tarefa (progresso verdadeiro — nunca fictício).
+model TaskEvent {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  type      String   // TASK_CREATED | STEP_STARTED | STEP_COMPLETED | TOOL_EXECUTED | AGENT_RUN | VALIDATION | COMPLETED | FAILED | CANCELLED
+  label     String   // texto curto exibível
+  status    String   @default("done") // pending | running | done | failed
+  data      String   @default("{}") // JSON (detalhes seguros)
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
 }
 
 // ---------------------------------------------------------------------------

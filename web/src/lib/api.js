@@ -88,6 +88,8 @@ export async function sendChat(body, handlers = {}) {
         case 'meta': handlers.onMeta?.(parsed); break;
         case 'status': handlers.onStatus?.(parsed); break;
         case 'plan': handlers.onPlan?.(parsed); break;
+        case 'task': handlers.onTask?.(parsed); break;
+        case 'task_done': handlers.onTaskDone?.(parsed); break;
         case 'event': handlers.onEvent?.(parsed); break;
         case 'delta': handlers.onDelta?.(parsed.text); break;
         case 'done': handlers.onDone?.(parsed); break;

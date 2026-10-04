@@ -152,6 +152,21 @@ label { font-size: 13px; color: var(--text-dim); font-weight: 600; }
 .refined-block { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--primary); animation: fadeInUp 160ms ease both; }
 .refined-head { font-size: 12px; font-weight: 700; color: var(--primary); display: flex; align-items: center; }
 
+/* #13 Central de Tarefas */
+.task-panel {
+  margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  padding: 12px 14px; animation: fadeInUp 180ms ease both;
+}
+.task-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.task-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; }
+.task-status { font-size: 11px; color: var(--text-faint); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.task-steps { display: flex; flex-direction: column; gap: 4px; }
+.task-step { font-size: 13px; padding: 4px 8px; border-radius: var(--radius-sm); color: var(--text-dim); }
+.task-step.running { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.task-step.done { color: var(--text); }
+.task-step.pending { color: var(--text-faint); }
+
 .status-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--primary-soft);

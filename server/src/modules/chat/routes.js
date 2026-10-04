@@ -16,6 +16,7 @@ import {
   QUICK_ACTION_KEYS,
   QUICK_ACTION_CATALOG,
 } from '../../ai/prompts/quick-actions.js';
+import * as taskService from '../tasks/service.js';
 
 export const chatRouter = Router();
 
@@ -80,6 +81,7 @@ const sendSchema = z.object({
 });
 
 chatRouter.post('/send', requireAuth, async (req, res, next) => {
+  let task = null; // escopo externo p/ o catch poder finalizar a tarefa
   try {
     if (!hasOpenAI()) {
       throw new AppError('IA indisponível: configure OPENAI_API_KEY.', 503, 'AI_UNAVAILABLE');
@@ -184,6 +186,24 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       complexity: planObj.complexity,
     });
 
+    // #13 Central de Tarefas: tarefas complexas viram Task REAL com eventos reais.
+    if (planObj.complexity === 'complex' && !planObj.clarificationNeeded) {
+      const planSteps = (planObj.steps?.length ? planObj.steps : planObj.agents).map((s, i) => ({
+        index: i, label: typeof s === 'string' ? s : `Etapa ${i + 1}`, status: 'pending',
+      }));
+      task = await taskService.createTask({
+        userId,
+        projectId: conversation.projectId,
+        conversationId: conversation.id,
+        goal: body.message.slice(0, 500),
+        plan: planSteps,
+      }).catch(() => null);
+      if (task) {
+        await taskService.setStatus(task.id, taskService.TASK_STATUS.RUNNING).catch(() => {});
+        send('task', { id: task.id, goal: body.message.slice(0, 120), plan: planSteps });
+      }
+    }
+
     // Clarification: devolve pergunta sem executar.
     if (planObj.clarificationNeeded) {
       send('status', { status: 'aguardando' });
@@ -214,7 +234,21 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       confirmed: Boolean(body.confirmed),
       project,
       memory,
-      onEvent: (ev) => send('event', ev),
+      onEvent: (ev) => {
+        send('event', ev);
+        // Registra eventos REAIS na tarefa (nunca fictício).
+        if (task) {
+          if (ev.type === 'agent_start') {
+            taskService.addEvent(task.id, { type: 'AGENT_RUN', label: `Agente ${ev.agent} em execução`, status: 'running' }).catch(() => {});
+          } else if (ev.type === 'agent_end') {
+            taskService.addEvent(task.id, { type: 'STEP_COMPLETED', label: `Agente ${ev.agent} concluído`, status: 'done' }).catch(() => {});
+          } else if (ev.type === 'tool_end') {
+            taskService.addEvent(task.id, { type: 'TOOL_EXECUTED', label: `Ferramenta ${ev.tool} ${ev.ok ? 'ok' : 'falhou'}`, status: ev.ok ? 'done' : 'failed', data: { tool: ev.tool } }).catch(() => {});
+          } else if (ev.type === 'status' && ev.status === 'validando') {
+            taskService.addEvent(task.id, { type: 'VALIDATION', label: 'Validando e sintetizando resultado', status: 'running' }).catch(() => {});
+          }
+        }
+      },
       collectSources: (list) => {
         for (const s of list) {
           if (s?.url && !seenSrc.has(s.url)) { seenSrc.add(s.url); collectedSources.push(s); }
@@ -279,9 +313,23 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       }).catch(() => {});
     }
 
+    // Finaliza a tarefa (se houver) com status real.
+    if (task) {
+      await taskService.addEvent(task.id, { type: 'COMPLETED', label: 'Resultado entregue', status: 'done' }).catch(() => {});
+      await taskService.setStatus(task.id, taskService.TASK_STATUS.COMPLETED, {
+        result: { messagePreview: result.text.slice(0, 300), agents: planObj.agents },
+      }).catch(() => {});
+      send('task_done', { id: task.id, status: 'COMPLETED' });
+    }
+
     send('done', { conversationId: conversation.id, creditsLeft: await credits.getBalance(userId) });
     res.end();
   } catch (e) {
+    // Marca a tarefa como falha, se já criada.
+    if (task) {
+      await taskService.addEvent(task.id, { type: 'FAILED', label: 'Falha na execução', status: 'failed', data: { error: e.message } }).catch(() => {});
+      await taskService.setStatus(task.id, taskService.TASK_STATUS.FAILED, { error: e.message }).catch(() => {});
+    }
     // Se o SSE já começou, envia erro pelo stream; senão, delega ao handler.
     if (res.headersSent) {
       res.write(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);

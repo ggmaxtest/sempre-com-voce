@@ -18,6 +18,7 @@ import usersRouter from './modules/users/routes.js';
 import chatRouter from './modules/chat/routes.js';
 import projectsRouter from './modules/projects/routes.js';
 import filesRouter from './modules/files/routes.js';
+import tasksRouter from './modules/tasks/routes.js';
 import adminRouter from './modules/admin/routes.js';
 import { getIntegrationsStatus } from './modules/integrations/service.js';
 import { hasOpenAI } from './config/index.js';
@@ -81,6 +82,7 @@ export function createApp() {
   app.use('/api/chat', chatRouter);
   app.use('/api/projects', projectsRouter);
   app.use('/api/files', filesRouter);
+  app.use('/api/tasks', tasksRouter);
   app.use('/api/admin', adminRouter);
 
   // 404 apenas para rotas /api desconhecidas.
