@@ -47,18 +47,21 @@ if (!prismaClientIsGenerated()) {
   }
 }
 
-// --- 2) Garante que o frontend (web/dist) esteja compilado ---
+// --- 2) Frontend (web/dist) ---
+// O build (web/dist) é VERSIONADO no repositório, então normalmente já existe aqui.
+// Só tentamos compilar se estiver ausente E o Vite estiver instalado (ambiente de dev).
+// Em produção (Square Cloud) não há Vite; nesse caso o dist versionado é usado.
 if (!fs.existsSync(webDist)) {
-  console.log('→ Compilando o frontend (web/dist)...');
-  const build = spawnSync('npm', ['--workspace', 'web', 'run', 'build'], {
-    stdio: 'inherit',
-    env: process.env,
-    cwd: projectRoot,
-    shell: process.platform === 'win32',
-  });
-  if (build.status !== 0) {
-    // Não aborta o boot: a API ainda sobe; o app.js mostra aviso de frontend não compilado.
-    console.warn('⚠ Falha ao compilar o frontend. A API subirá, mas a interface não será servida.');
+  const hasVite = fs.existsSync(path.join(projectRoot, 'node_modules', '.bin', 'vite')) ||
+    fs.existsSync(path.join(projectRoot, 'web', 'node_modules', '.bin', 'vite'));
+  if (hasVite) {
+    console.log('→ web/dist ausente: compilando o frontend...');
+    spawnSync('npm', ['--workspace', 'web', 'run', 'build'], {
+      stdio: 'inherit', env: process.env, cwd: projectRoot,
+      shell: process.platform === 'win32',
+    });
+  } else {
+    console.warn('⚠ web/dist ausente e Vite indisponível. A interface não será servida (API funciona normalmente).');
   }
 }
 

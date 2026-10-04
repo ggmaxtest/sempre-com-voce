@@ -1,6 +1,9 @@
 node_modules/
-dist/
 build/
+# O build do frontend (web/dist) É versionado de propósito, para hosts de produção
+# (ex.: Square Cloud) que instalam sem devDependencies e não têm o Vite para compilar.
+# Por isso NÃO ignoramos dist/ globalmente.
+.vite/
 .env
 .env.local
 *.log
@@ -10,5 +13,4 @@ server/data/
 coverage/
 .DS_Store
 .turbo/
-.vite/
 .kiro/
