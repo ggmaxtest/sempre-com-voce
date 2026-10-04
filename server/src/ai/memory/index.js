@@ -47,6 +47,26 @@ export async function remember({ userId, projectId, scope, refId, content, impor
   });
 }
 
+// Lista fatos de memória do usuário (opcionalmente filtrados por escopo/projeto).
+// Para controle do usuário na UI. Não retorna embeddings.
+export async function listMemories({ userId, projectId, scope, limit = 100 }) {
+  const where = { userId };
+  if (scope) where.scope = scope;
+  if (projectId !== undefined) where.projectId = projectId || null;
+  return prisma.memory.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: { id: true, content: true, scope: true, projectId: true, importance: true, createdAt: true },
+  });
+}
+
+// Remove um fato (isolado por usuário).
+export async function forget({ userId, id }) {
+  const r = await prisma.memory.deleteMany({ where: { id, userId } });
+  return r.count > 0;
+}
+
 /**
  * Recupera memórias relevantes por similaridade semântica, respeitando isolamento.
  * Faz fallback para recência quando não há embeddings.

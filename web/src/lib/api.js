@@ -146,3 +146,15 @@ export async function refineContent(body, handlers = {}) {
 export function getQuickActions() {
   return api.get('/chat/quick-actions');
 }
+
+// #21 Memória & Marca
+export const brandApi = {
+  get: (projectId) => api.get('/brand' + (projectId ? `?projectId=${projectId}` : '')),
+  save: (data) => api.put('/brand', data),
+  clear: (projectId) => api.del('/brand' + (projectId ? `?projectId=${projectId}` : '')),
+};
+export const memoryApi = {
+  list: (scope) => api.get('/memory' + (scope ? `?scope=${scope}` : '')),
+  add: (content, scope = 'USER') => api.post('/memory', { content, scope }),
+  remove: (id) => api.del('/memory/' + id),
+};

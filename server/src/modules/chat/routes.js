@@ -17,6 +17,7 @@ import {
   QUICK_ACTION_CATALOG,
 } from '../../ai/prompts/quick-actions.js';
 import * as taskService from '../tasks/service.js';
+import { getEffectiveBrand, renderBrandContext } from '../brand/service.js';
 
 export const chatRouter = Router();
 
@@ -160,6 +161,10 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       limit: 6,
     }).catch(() => []);
 
+    // #21 Memória da Marca: perfil do negócio (projeto > global do usuário).
+    const brandProfile = await getEffectiveBrand(userId, conversation.projectId).catch(() => null);
+    const brandContext = renderBrandContext(brandProfile);
+
     // --- Inicia SSE ---
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -237,6 +242,7 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       confirmed: Boolean(body.confirmed),
       project,
       memory,
+      brandContext,
       onEvent: (ev) => {
         send('event', ev);
         // Registra eventos REAIS na tarefa (nunca fictício).

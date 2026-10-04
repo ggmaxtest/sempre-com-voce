@@ -8,6 +8,7 @@ import Chat from './pages/Chat.jsx';
 import Projects from './pages/Projects.jsx';
 import Settings from './pages/Settings.jsx';
 import Admin from './pages/Admin.jsx';
+import Memory from './pages/Memory.jsx';
 
 export default function App() {
   const { user, loading, bootstrap } = useAuth();
@@ -81,6 +82,9 @@ function Shell() {
           <div className="nav-item" onClick={() => { navigate('/projects'); setSidebarOpen(false); }}>
             <Icon.folder /> Meus Projetos
           </div>
+          <div className="nav-item" onClick={() => { navigate('/memory'); setSidebarOpen(false); }}>
+            <Icon.brain /> Memória & Marca
+          </div>
           <div className="nav-item" onClick={() => { navigate('/settings'); setSidebarOpen(false); }}>
             <Icon.settings /> Configurações
           </div>
@@ -132,6 +136,7 @@ function Shell() {
           <Route path="/project/:projectId" element={<ProjectChat />} />
           <Route path="/project/:projectId/c/:id" element={<ProjectChat />} />
           <Route path="/projects" element={<Projects />} />
+          <Route path="/memory" element={<Memory />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={user.role === 'ADMIN' ? <Admin /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />

@@ -96,8 +96,11 @@ export async function execute({ history, userMessage, plan, ctx, onDelta }) {
   const emit = ctx.onEvent || (() => {});
   const agentResults = [];
 
-  // Monta o contexto base (system principal + contexto do projeto/memória relevante).
+  // Monta o contexto base (system principal + marca + projeto + memória relevante).
   const contextBlocks = [];
+  if (ctx.brandContext) {
+    contextBlocks.push(ctx.brandContext);
+  }
   if (ctx.project?.name) {
     contextBlocks.push(
       `Projeto atual: ${ctx.project.name}${ctx.project.context ? `\nContexto do projeto: ${ctx.project.context}` : ''}`,

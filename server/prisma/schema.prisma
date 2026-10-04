@@ -42,6 +42,7 @@ model User {
   creditLedger  CreditTransaction[]
   usageEvents   UsageEvent[]
   tasks         Task[]
+  brandProfiles BrandProfile[]
 }
 
 model Session {
@@ -148,7 +149,7 @@ model Memory {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   projectId  String?
   project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  scope      String   // USER | PROJECT | CONVERSATION
+  scope      String   // USER | PROJECT | BRAND | CONVERSATION
   refId      String?
   content    String
   embedding  String?  // JSON array de floats
@@ -158,6 +159,38 @@ model Memory {
   @@index([userId])
   @@index([projectId])
   @@index([scope])
+}
+
+// ---------------------------------------------------------------------------
+// Perfil de Marca (#21) — "o jeito do negócio" que a IA aprende e reutiliza.
+// Um por escopo: por projeto (projectId != null) ou global do usuário (projectId null).
+// Campos JSON guardados como String (SQLite). Nunca armazenar segredos de API aqui.
+// ---------------------------------------------------------------------------
+
+model BrandProfile {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId     String?  // null = perfil global do usuário
+  name          String?  // nome da marca
+  products      String?  // produtos/serviços
+  pricing       String?  // preços
+  audience      String?  // público-alvo
+  positioning   String?  // posicionamento
+  differentials String?  // diferenciais
+  toneOfVoice   String?  // tom de voz
+  visualStyle   String?  // estilo visual
+  objectives    String?  // objetivos
+  competitors   String?  // concorrentes
+  rules         String?  // regras da marca (o que pode/não pode)
+  approvedExamples String? // exemplos de textos aprovados
+  avoidExamples    String? // exemplos a evitar
+  extra         String   @default("{}") // JSON p/ campos futuros
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, projectId])
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------
