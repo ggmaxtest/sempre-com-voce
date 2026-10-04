@@ -71,6 +71,8 @@ export const config = {
     vision: process.env.MODEL_VISION || 'gpt-4o',
     image: process.env.MODEL_IMAGE || 'gpt-image-1',
     embedding: process.env.MODEL_EMBEDDING || 'text-embedding-3-small',
+    // Modelo usado na pesquisa web nativa da OpenAI (Responses API).
+    search: process.env.MODEL_SEARCH || 'gpt-4o',
   },
 
   redis: {
@@ -91,7 +93,8 @@ export const config = {
   },
 
   search: {
-    driver: process.env.SEARCH_DRIVER || 'none',
+    // Padrão: pesquisa nativa da OpenAI (só precisa da OPENAI_API_KEY).
+    driver: process.env.SEARCH_DRIVER || 'openai',
     tavilyApiKey: process.env.TAVILY_API_KEY || '',
     serpApiKey: process.env.SERPAPI_API_KEY || '',
   },

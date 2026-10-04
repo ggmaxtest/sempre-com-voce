@@ -111,6 +111,11 @@ export async function runAgent({ agentName, messages, complexity = 'simple', ctx
       ctx.onEvent?.({ type: 'tool_start', agent: agentName, tool: call.function.name });
       const result = await runTool(call.function.name, args, ctx);
       toolRuns.push({ tool: call.function.name, ok: result.ok, latencyMs: result.latencyMs });
+      // Surfacing de fontes de pesquisa para a UI (e para persistir no histórico).
+      if (call.function.name === 'web_search' && result.ok && result.data?.results?.length) {
+        ctx.collectSources?.(result.data.results);
+        ctx.onEvent?.({ type: 'sources', sources: result.data.results.slice(0, 8) });
+      }
       ctx.onEvent?.({ type: 'tool_end', agent: agentName, tool: call.function.name, ok: result.ok });
       convo.push({
         role: 'tool',

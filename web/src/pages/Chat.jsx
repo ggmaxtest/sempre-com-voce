@@ -29,6 +29,7 @@ export default function Chat({ projectId }) {
   const [plan, setPlan] = useState(null);
   const [events, setEvents] = useState([]);
   const [streamText, setStreamText] = useState('');
+  const [streamSources, setStreamSources] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -40,7 +41,7 @@ export default function Chat({ projectId }) {
     if (!convoId) { setMessages([]); return; }
     try {
       const { conversation } = await api.get(`/chat/conversations/${convoId}`);
-      setMessages(conversation.messages.map((m) => ({ role: m.role.toLowerCase(), content: m.content, meta: m.meta })));
+      setMessages(conversation.messages.map((m) => ({ role: m.role.toLowerCase(), content: m.content, meta: m.meta, attachments: m.attachments })));
     } catch { setMessages([]); }
   }
 
@@ -53,8 +54,10 @@ export default function Chat({ projectId }) {
     if (!content || sending) return;
     setInput('');
     setSending(true);
-    setStatus('analisando'); setPlan(null); setEvents([]); setStreamText('');
+    setStatus('analisando'); setPlan(null); setEvents([]); setStreamText(''); setStreamSources([]);
     const attachIds = attachments.map((a) => a.id);
+    const srcAcc = [];
+    const srcSeen = new Set();
     setMessages((m) => [...m, { role: 'user', content, attachments }]);
     setAttachments([]);
 
@@ -69,11 +72,20 @@ export default function Chat({ projectId }) {
         },
         onStatus: ({ status }) => setStatus(status),
         onPlan: (p) => { setPlan(p); setStatus(p.complexity === 'complex' ? 'processando' : 'criando'); },
-        onEvent: (ev) => setEvents((e) => [...e, ev]),
+        onEvent: (ev) => {
+          setEvents((e) => [...e, ev]);
+          if (ev.type === 'sources' && ev.sources?.length) {
+            for (const x of ev.sources) {
+              if (x.url && !srcSeen.has(x.url)) { srcSeen.add(x.url); srcAcc.push(x); }
+            }
+            setStreamSources([...srcAcc]);
+          }
+          if (ev.type === 'pesquisando' || ev.tool === 'web_search') setStatus('pesquisando');
+        },
         onDelta: (t) => { acc += t; setStreamText(acc); },
         onDone: (d) => {
-          setMessages((m) => [...m, { role: 'ai', content: acc, meta: { agents: plan?.agents } }]);
-          setStreamText(''); setStatus(null); setPlan(null); setEvents([]); setSending(false);
+          setMessages((m) => [...m, { role: 'ai', content: acc, meta: { agents: plan?.agents, sources: srcAcc } }]);
+          setStreamText(''); setStreamSources([]); setStatus(null); setPlan(null); setEvents([]); setSending(false);
           if (typeof d.creditsLeft === 'number') updateUser({ creditBalance: d.creditsLeft });
           if (!id && d.conversationId) {
             window.dispatchEvent(new CustomEvent('scv:conversations-changed'));
@@ -110,6 +122,7 @@ export default function Chat({ projectId }) {
         {empty ? (
           <div className="welcome">
             <div>
+              <div className="welcome-mark">◐</div>
               <h1>Em que posso ajudar?</h1>
               <p>Conte o que você precisa — eu cuido do resto.</p>
               <div className="suggestions">
@@ -139,6 +152,7 @@ export default function Chat({ projectId }) {
                   {streamText && (
                     <div className="msg-bubble" style={{ marginTop: 10 }}>
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
+                      <Sources sources={streamSources} />
                     </div>
                   )}
                 </div>
@@ -204,6 +218,7 @@ function Message({ msg, onRegenerate }) {
               {msg.attachments.map((a) => <span key={a.id} className="badge">📎 {a.filename}</span>)}
             </div>
           )}
+          {!isUser && <Sources sources={msg.meta?.sources} />}
         </div>
         {!isUser && (
           <div className="msg-actions">
@@ -214,6 +229,27 @@ function Message({ msg, onRegenerate }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Sources({ sources }) {
+  if (!sources?.length) return null;
+  return (
+    <div className="sources">
+      <div className="sources-title">🔎 Fontes</div>
+      {sources.map((s, i) => {
+        let host = s.source;
+        try { if (!host) host = new URL(s.url).hostname; } catch { /* ignore */ }
+        const favicon = host ? `https://www.google.com/s2/favicons?domain=${host}&sz=32` : null;
+        return (
+          <a key={i} className="source-link" href={s.url} target="_blank" rel="noopener noreferrer">
+            {favicon && <img className="favicon" src={favicon} alt="" />}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.url}</span>
+            {host && <span className="src-host">{host}</span>}
+          </a>
+        );
+      })}
     </div>
   );
 }

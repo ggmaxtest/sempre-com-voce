@@ -21,6 +21,11 @@ cp .env.example .env     # preencha OPENAI_API_KEY
 ```
 Verifique em `GET /api/health` → `ai: "ready"`.
 
+### Pesquisa na web
+Por padrão (`SEARCH_DRIVER=openai`), a pesquisa usa a **ferramenta nativa da OpenAI**
+(Responses API, `web_search`) — basta a `OPENAI_API_KEY`, sem serviço externo. A IA
+responde com **fontes/citações reais**, exibidas no chat. Alternativas: `tavily` ou `serpapi`.
+
 ## Opcional: usar Postgres em vez de SQLite
 1. Em `server/prisma/schema.prisma`, troque `provider = "sqlite"` por `provider = "postgresql"`.
 2. Defina `DATABASE_URL` no `.env` com a string do Postgres.

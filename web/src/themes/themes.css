@@ -1,43 +1,56 @@
 /* Dois temas via CSS variables. Trocar o tema NÃO altera a lógica da app. */
 
 :root {
-  --radius: 14px;
-  --radius-sm: 9px;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-lg: 24px;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --transition: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition: 200ms cubic-bezier(0.22, 0.78, 0.26, 1);
+  --maxw: 860px;
 }
 
 /* ===================== TEMA LUNAR (azul profundo, escuro, futurista) ===================== */
 [data-theme='lunar'] {
-  --bg: #070b1a;
-  --bg-elev: #0d1430;
-  --bg-elev-2: #131c42;
-  --surface: #0f1733;
-  --border: #1e2a55;
-  --text: #e8edff;
+  --bg: #060a18;
+  --bg-elev: #0c1430;
+  --bg-elev-2: #121d44;
+  --surface: #0e1734;
+  --surface-glass: rgba(16, 24, 56, 0.72);
+  --border: #1c2a56;
+  --border-strong: #27407f;
+  --text: #eaf0ff;
   --text-dim: #9aa6d4;
-  --text-faint: #5f6ba0;
+  --text-faint: #5b679c;
   --primary: #3b82f6;
   --primary-strong: #2563eb;
-  --primary-soft: rgba(59, 130, 246, 0.14);
+  --primary-soft: rgba(59, 130, 246, 0.15);
   --accent: #38bdf8;
-  --glow: 0 0 40px rgba(56, 189, 248, 0.25);
-  --bubble-user: linear-gradient(135deg, #2563eb, #1d4ed8);
-  --bubble-ai: #0f1733;
+  --accent-2: #818cf8;
+  --glow: 0 0 48px rgba(56, 189, 248, 0.28);
+  --glow-soft: 0 0 24px rgba(59, 130, 246, 0.18);
+  --bubble-user: linear-gradient(135deg, #2f6bf0, #1d4ed8);
+  --bubble-ai: rgba(16, 24, 56, 0.6);
   --danger: #f87171;
   --success: #34d399;
-  --shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  --app-gradient: radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.1), transparent),
-    radial-gradient(900px 500px at 0% 100%, rgba(59, 130, 246, 0.08), transparent);
+  --warning: #fbbf24;
+  --shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --app-gradient:
+    radial-gradient(1200px 620px at 82% -12%, rgba(56, 189, 248, 0.14), transparent 60%),
+    radial-gradient(900px 520px at -5% 108%, rgba(99, 102, 241, 0.12), transparent 60%),
+    radial-gradient(700px 400px at 50% 50%, rgba(37, 99, 235, 0.04), transparent 70%);
+  --scrollbar: #22326a;
 }
 
 /* ===================== TEMA SOLAR (branco, roxo, lilás, acolhedor) ===================== */
 [data-theme='solar'] {
-  --bg: #faf7ff;
+  --bg: #f7f4ff;
   --bg-elev: #ffffff;
-  --bg-elev-2: #f3edff;
+  --bg-elev-2: #f1e9ff;
   --surface: #ffffff;
-  --border: #e9ddff;
+  --surface-glass: rgba(255, 255, 255, 0.78);
+  --border: #ebe0ff;
+  --border-strong: #d9c6ff;
   --text: #2a1b45;
   --text-dim: #6b5a8a;
   --text-faint: #a99bc4;
@@ -45,12 +58,19 @@
   --primary-strong: #7c3aed;
   --primary-soft: rgba(139, 92, 246, 0.1);
   --accent: #c084fc;
-  --glow: 0 8px 30px rgba(139, 92, 246, 0.18);
+  --accent-2: #f0abfc;
+  --glow: 0 10px 40px rgba(139, 92, 246, 0.22);
+  --glow-soft: 0 6px 22px rgba(139, 92, 246, 0.14);
   --bubble-user: linear-gradient(135deg, #a855f7, #8b5cf6);
   --bubble-ai: #f6f1ff;
   --danger: #ef4444;
   --success: #10b981;
-  --shadow: 0 10px 36px rgba(139, 92, 246, 0.14);
-  --app-gradient: radial-gradient(1000px 500px at 90% -10%, rgba(192, 132, 252, 0.16), transparent),
-    radial-gradient(800px 500px at -10% 110%, rgba(139, 92, 246, 0.1), transparent);
+  --warning: #d97706;
+  --shadow: 0 16px 44px rgba(139, 92, 246, 0.16);
+  --shadow-sm: 0 4px 16px rgba(139, 92, 246, 0.1);
+  --app-gradient:
+    radial-gradient(1100px 560px at 88% -12%, rgba(192, 132, 252, 0.22), transparent 60%),
+    radial-gradient(820px 520px at -8% 112%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(600px 400px at 50% 40%, rgba(240, 171, 252, 0.08), transparent 70%);
+  --scrollbar: #d9c6ff;
 }

@@ -199,6 +199,8 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
     const allow = new Set(['search', 'image', 'files']);
 
     // 2) Execução + síntese em streaming.
+    const collectedSources = [];
+    const seenSrc = new Set();
     const ctx = {
       userId,
       projectId: conversation.projectId,
@@ -207,6 +209,11 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       project,
       memory,
       onEvent: (ev) => send('event', ev),
+      collectSources: (list) => {
+        for (const s of list) {
+          if (s?.url && !seenSrc.has(s.url)) { seenSrc.add(s.url); collectedSources.push(s); }
+        }
+      },
     };
 
     const result = await runPlan({
@@ -227,6 +234,7 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
           agents: planObj.agents,
           agentResults: result.agentResults?.map((a) => ({ agent: a.agent, ok: !a.error })),
           model: result.model,
+          sources: collectedSources.slice(0, 8),
         }),
       },
     });

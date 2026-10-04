@@ -65,3 +65,36 @@ export async function generateImage({ model, prompt, size = '1024x1024', n = 1 }
   // Retorna base64 ou url conforme o modelo.
   return res.data.map((d) => ({ b64: d.b64_json || null, url: d.url || null }));
 }
+
+// Pesquisa na web NATIVA da OpenAI (Responses API, ferramenta web_search).
+// Retorna o texto sintetizado + as fontes extraídas das anotações url_citation.
+export async function webSearch({ model, query }) {
+  const openai = getOpenAI();
+  const res = await openai.responses.create({
+    model,
+    tools: [{ type: 'web_search' }],
+    tool_choice: 'auto',
+    input: query,
+  });
+
+  // Extrai texto e citações (url_citation) das anotações.
+  let text = res.output_text || '';
+  const sources = [];
+  const seen = new Set();
+  for (const item of res.output || []) {
+    if (item.type !== 'message') continue;
+    for (const part of item.content || []) {
+      if (!text && part.type === 'output_text' && part.text) text = part.text;
+      for (const ann of part.annotations || []) {
+        if (ann.type === 'url_citation' && ann.url && !seen.has(ann.url)) {
+          seen.add(ann.url);
+          let host = null;
+          try { host = new URL(ann.url).hostname; } catch { /* ignore */ }
+          sources.push({ title: ann.title || host || ann.url, url: ann.url, source: host });
+        }
+      }
+    }
+  }
+
+  return { text, sources, usage: res.usage ?? null };
+}
