@@ -5,8 +5,10 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
+    "postinstall": "node scripts/prisma-env.js generate || true",
+    "prestart": "node scripts/ensure-db.js",
     "dev": "node scripts/ensure-db.js && node --watch src/index.js",
-    "start": "node scripts/ensure-db.js && node src/index.js",
+    "start": "node src/index.js",
     "db:generate": "node scripts/prisma-env.js generate",
     "db:push": "node scripts/prisma-env.js db push",
     "db:migrate": "node scripts/prisma-env.js migrate dev",
@@ -18,7 +20,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
-    "argon2": "^0.41.1",
+    "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

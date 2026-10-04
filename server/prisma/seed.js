@@ -2,7 +2,7 @@
 // Importa a config primeiro: ela define DATABASE_URL (SQLite) e JWT_SECRET se ausentes.
 import '../src/config/index.js';
 import { PrismaClient } from '@prisma/client';
-import argon2 from 'argon2';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -23,7 +23,7 @@ async function main() {
   // Admin
   const email = process.env.ADMIN_EMAIL || 'admin@semprecomvoce.ai';
   const password = process.env.ADMIN_PASSWORD || 'change-me';
-  const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+  const passwordHash = await bcrypt.hash(password, 12);
   const admin = await prisma.user.upsert({
     where: { email },
     update: { role: 'ADMIN' },

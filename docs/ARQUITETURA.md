@@ -7,7 +7,7 @@ FRONTEND (web/ — React+Vite)
       ↓ HTTP/SSE (/api)
 API / BACKEND (server/ — Express)
       ↓
-AUTHENTICATION (JWT httpOnly + Argon2, sessões no banco)
+AUTHENTICATION (JWT httpOnly + bcrypt, sessões no banco)
       ↓
 AI ORCHESTRATOR (server/src/ai/orchestrator)
       ↓
@@ -38,7 +38,7 @@ Tudo é transmitido via **SSE**: eventos `meta`, `status`, `plan`, `event` (tool
 - **Prompt injection**: todo conteúdo externo (URLs, arquivos, pesquisa) é marcado como DADO. O system prompt instrui a IA a tratar conteúdo externo como dado, nunca como instrução. A ferramenta `fetch_url` marca `externalData: true`.
 - **SSRF**: `fetch_url` bloqueia localhost e redes privadas.
 - **Isolamento por usuário/projeto**: toda query filtra por `userId`; arquivos e memórias idem.
-- **Senhas**: Argon2id. **Sessões**: hash do token no banco, revogáveis.
+- **Senhas**: bcrypt (puro JS, sem build nativo). **Sessões**: hash do token no banco (cada JWT tem `jti` único), revogáveis.
 - **Rate limiting**, **helmet**, **CORS** restrito à origem do frontend.
 - Erros nunca vazam stack trace ao cliente; logs com `redact` de segredos/PII.
 

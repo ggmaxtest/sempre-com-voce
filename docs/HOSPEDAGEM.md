@@ -36,5 +36,19 @@ Verifique em `GET /api/health` → `ai: "ready"`.
 - Nunca versione `.env` nem `server/data/`.
 - Integrações Meta/Google/TikTok aparecem como **PENDENTE** até você fornecer credenciais — nada é simulado.
 
+## Deploy na Square Cloud
+O projeto já inclui `squarecloud.app` (config do serviço) e é resiliente ao bloqueio de
+install scripts da Square Cloud:
+- O `prestart` roda `scripts/ensure-db.js`, que **gera o Prisma Client**, cria o banco SQLite
+  e popula os dados iniciais automaticamente — mesmo que o `postinstall` do `@prisma/client`
+  tenha sido bloqueado.
+- As senhas usam **bcrypt (puro JS)**, então não há build nativo (`node-gyp`) para a Square Cloud bloquear.
+
+Passos:
+1. Faça upload do projeto (sem `node_modules`).
+2. Em *Variáveis de ambiente* da Square Cloud, defina ao menos `OPENAI_API_KEY` (e, se quiser, `ADMIN_EMAIL`/`ADMIN_PASSWORD`).
+3. A Square Cloud roda `npm install` e depois `npm start` — o `prestart` cuida do Prisma e do banco.
+> Garanta que `server/data/` fique em armazenamento persistente para não perder o banco a cada restart.
+
 ## Avisos de dependências (dev)
 Advisories de `vite`/`esbuild` afetam só o servidor de desenvolvimento local, não o build de produção.

@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import argon2 from 'argon2';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { verifyToken } from '../src/modules/auth/service.js';
 
-describe('Segurança de senha (Argon2)', () => {
+describe('Segurança de senha (bcrypt)', () => {
   it('nunca armazena a senha em texto puro e verifica corretamente', async () => {
     const plain = 'SenhaForte#2026';
-    const hash = await argon2.hash(plain, { type: argon2.argon2id });
+    const hash = await bcrypt.hash(plain, 12);
     expect(hash).not.toContain(plain);
-    expect(hash.startsWith('$argon2id$')).toBe(true);
-    expect(await argon2.verify(hash, plain)).toBe(true);
-    expect(await argon2.verify(hash, 'senhaErrada')).toBe(false);
+    expect(hash.startsWith('$2')).toBe(true); // prefixo bcrypt
+    expect(await bcrypt.compare(plain, hash)).toBe(true);
+    expect(await bcrypt.compare('senhaErrada', hash)).toBe(false);
   });
 });
 

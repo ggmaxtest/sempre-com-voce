@@ -1,5 +1,5 @@
-// Serviço de autenticação: hashing Argon2, emissão de JWT, sessões.
-import argon2 from 'argon2';
+// Serviço de autenticação: hashing bcrypt (puro JS), emissão de JWT, sessões.
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { prisma } from '../../db/client.js';
@@ -8,12 +8,12 @@ import { Conflict, Unauthorized } from '../../utils/errors.js';
 import { parseJSON } from '../../utils/json.js';
 
 export async function hashPassword(plain) {
-  return argon2.hash(plain, { type: argon2.argon2id });
+  return bcrypt.hash(plain, 12);
 }
 
 export async function verifyPassword(hash, plain) {
   try {
-    return await argon2.verify(hash, plain);
+    return await bcrypt.compare(plain, hash);
   } catch {
     return false;
   }
@@ -21,7 +21,9 @@ export async function verifyPassword(hash, plain) {
 
 function signToken(user) {
   return jwt.sign(
-    { sub: user.id, role: user.role, email: user.email },
+    // jti aleatório garante que cada token (e seu hash) seja único,
+    // mesmo que dois logins ocorram no mesmo segundo.
+    { sub: user.id, role: user.role, email: user.email, jti: crypto.randomUUID() },
     config.jwt.secret,
     { expiresIn: config.jwt.expiresIn },
   );
