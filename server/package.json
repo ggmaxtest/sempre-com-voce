@@ -1,0 +1,43 @@
+{
+  "name": "@scv/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node scripts/ensure-db.js && node --watch src/index.js",
+    "start": "node scripts/ensure-db.js && node src/index.js",
+    "db:generate": "node scripts/prisma-env.js generate",
+    "db:push": "node scripts/prisma-env.js db push",
+    "db:migrate": "node scripts/prisma-env.js migrate dev",
+    "db:seed": "node prisma/seed.js",
+    "test": "vitest run"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "argon2": "^0.41.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.1",
+    "openai": "^4.67.1",
+    "pino": "^9.4.0",
+    "pino-http": "^10.3.0",
+    "pino-pretty": "^11.2.2",
+    "zod": "^3.23.8",
+    "csv-parse": "^5.6.0",
+    "exceljs": "^4.4.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "prisma": "^5.20.0",
+    "vitest": "^3.2.4"
+  }
+}

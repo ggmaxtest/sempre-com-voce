@@ -1,0 +1,268 @@
+// Sempre com Você — modelo de dados completo.
+// SQLite embutido: zero configuração. O arquivo do banco é criado sozinho.
+// (Enums viram String e campos JSON viram String contendo JSON, pois o SQLite
+//  no Prisma não suporta enum/Json nativos. A camada de app faz parse/serialize.)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Usuários, autenticação e perfis
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String?
+  avatarUrl     String?
+  role          String   @default("USER") // USER | ADMIN
+  locale        String   @default("pt-BR")
+  theme         String   @default("lunar") // lunar | solar
+  tone          String?
+  preferences   String   @default("{}")    // JSON
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  planTier      String   @default("FREE")  // FREE | PRO | PREMIUM
+  creditBalance Int      @default(0)
+
+  projects      Project[]
+  conversations Conversation[]
+  files         FileAsset[]
+  memories      Memory[]
+  sessions      Session[]
+  creditLedger  CreditTransaction[]
+  usageEvents   UsageEvent[]
+  tasks         Task[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Projetos ("Meus Projetos")
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  context     String?
+  settings    String   @default("{}") // JSON
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  conversations Conversation[]
+  files         FileAsset[]
+  memories      Memory[]
+  tasks         Task[]
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Conversas e mensagens
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title     String   @default("Nova conversa")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+
+  messages  Message[]
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String       // USER | ASSISTANT | SYSTEM | TOOL
+  content        String       // markdown
+  meta           String       @default("{}") // JSON
+  attachments    String       @default("[]") // JSON (referências a FileAsset)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+// ---------------------------------------------------------------------------
+// Arquivos
+// ---------------------------------------------------------------------------
+
+model FileAsset {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  filename   String
+  mimeType   String
+  size       Int
+  storageKey String
+  kind       String   // csv | xlsx | pdf | image | document | other
+  extracted  String?  // JSON (texto/estrutura extraída)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Memória (usuário / projeto / conversa). Embedding guardado como JSON de floats;
+// a similaridade (cosseno) é calculada na camada de aplicação.
+// ---------------------------------------------------------------------------
+
+model Memory {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scope      String   // USER | PROJECT | CONVERSATION
+  refId      String?
+  content    String
+  embedding  String?  // JSON array de floats
+  importance Float    @default(1)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([scope])
+}
+
+// ---------------------------------------------------------------------------
+// Tarefas longas ("Faça por mim")
+// ---------------------------------------------------------------------------
+
+model Task {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  goal      String
+  status    String   @default("PENDING") // PENDING | RUNNING | WAITING_CONFIRMATION | COMPLETED | FAILED | CANCELLED
+  plan      String   @default("[]") // JSON
+  state     String   @default("{}") // JSON
+  result    String?  // JSON
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Planos e créditos
+// ---------------------------------------------------------------------------
+
+model Plan {
+  id             String   @id @default(cuid())
+  tier           String   @unique // FREE | PRO | PREMIUM
+  name           String
+  monthlyCredits Int
+  limits         String   @default("{}") // JSON
+  priceCents     Int      @default(0)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+model CreditTransaction {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount       Int      // negativo = débito, positivo = crédito
+  reason       String   // GRANT | CHAT | SEARCH | IMAGE | ANALYSIS | TOOL | REFUND | ADMIN_ADJUST
+  balanceAfter Int
+  meta         String   @default("{}") // JSON
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Observabilidade: uso, custos, logs de execução
+// ---------------------------------------------------------------------------
+
+model UsageEvent {
+  id               String   @id @default(cuid())
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  projectId        String?
+  kind             String   // chat | search | image | vision | analysis | tool | agent
+  model            String?
+  agent            String?
+  tool             String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  costMicroUsd     Int      @default(0)
+  latencyMs        Int      @default(0)
+  status           String   @default("ok") // ok | error
+  error            String?
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([kind])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Prompts internos (versionados) — nunca expostos
+// ---------------------------------------------------------------------------
+
+model PromptTemplate {
+  id        String   @id @default(cuid())
+  key       String
+  version   Int      @default(1)
+  content   String
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@unique([key, version])
+  @@index([key])
+}
+
+// ---------------------------------------------------------------------------
+// Integrações externas (estado real; nenhuma falsa)
+// ---------------------------------------------------------------------------
+
+model Integration {
+  id        String   @id @default(cuid())
+  provider  String   @unique // meta | google_ads | tiktok | ...
+  status    String   @default("PENDING") // PENDING | CONNECTED | ERROR | DISABLED
+  config    String   @default("{}") // JSON
+  lastCheck DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

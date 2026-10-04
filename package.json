@@ -1,0 +1,28 @@
+{
+  "name": "sempre-com-voce",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sempre com Você — Uma IA. Todas as ferramentas. Um só lugar.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "build": "npm --workspace web run build",
+    "start": "npm --workspace server run start",
+    "db:push": "npm --workspace server run db:push",
+    "db:generate": "npm --workspace server run db:generate",
+    "db:seed": "npm --workspace server run db:seed",
+    "test": "npm --workspace server run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

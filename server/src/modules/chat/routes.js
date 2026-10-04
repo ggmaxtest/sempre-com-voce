@@ -1,0 +1,280 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { prisma } from '../../db/client.js';
+import { requireAuth } from '../../middleware/auth.js';
+import { NotFound, AppError } from '../../utils/errors.js';
+import { plan as buildPlan, execute as runPlan } from '../../ai/orchestrator/index.js';
+import { recall, remember } from '../../ai/memory/index.js';
+import { recordUsage } from '../usage/service.js';
+import * as credits from '../credits/service.js';
+import { estimateCostMicroUsd } from '../../ai/model-router/index.js';
+import { hasOpenAI } from '../../config/index.js';
+import { parseJSON } from '../../utils/json.js';
+
+export const chatRouter = Router();
+
+// --- Conversas (histórico) ---
+chatRouter.get('/conversations', requireAuth, async (req, res, next) => {
+  try {
+    const items = await prisma.conversation.findMany({
+      where: { userId: req.user.id, archivedAt: null },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, title: true, projectId: true, createdAt: true, updatedAt: true },
+    });
+    res.json({ conversations: items });
+  } catch (e) { next(e); }
+});
+
+chatRouter.get('/conversations/:id', requireAuth, async (req, res, next) => {
+  try {
+    const convo = await prisma.conversation.findFirst({
+      where: { id: req.params.id, userId: req.user.id },
+      include: { messages: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!convo) throw NotFound('Conversa não encontrada.');
+    convo.messages = convo.messages.map((m) => ({
+      ...m,
+      meta: parseJSON(m.meta, {}),
+      attachments: parseJSON(m.attachments, []),
+    }));
+    res.json({ conversation: convo });
+  } catch (e) { next(e); }
+});
+
+chatRouter.patch('/conversations/:id', requireAuth, async (req, res, next) => {
+  try {
+    const schema = z.object({ title: z.string().min(1).max(200) });
+    const { title } = schema.parse(req.body);
+    const result = await prisma.conversation.updateMany({
+      where: { id: req.params.id, userId: req.user.id },
+      data: { title },
+    });
+    if (!result.count) throw NotFound('Conversa não encontrada.');
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+chatRouter.delete('/conversations/:id', requireAuth, async (req, res, next) => {
+  try {
+    const result = await prisma.conversation.deleteMany({
+      where: { id: req.params.id, userId: req.user.id },
+    });
+    if (!result.count) throw NotFound('Conversa não encontrada.');
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// --- Envio de mensagem com streaming (SSE) ---
+const sendSchema = z.object({
+  conversationId: z.string().optional(),
+  projectId: z.string().optional(),
+  message: z.string().min(1).max(20000),
+  attachments: z.array(z.string()).optional(), // fileIds
+  confirmed: z.boolean().optional(),
+});
+
+chatRouter.post('/send', requireAuth, async (req, res, next) => {
+  try {
+    if (!hasOpenAI()) {
+      throw new AppError('IA indisponível: configure OPENAI_API_KEY.', 503, 'AI_UNAVAILABLE');
+    }
+    const body = sendSchema.parse(req.body);
+    const userId = req.user.id;
+
+    // Verifica créditos ANTES (sem debitar ainda).
+    if (!(await credits.hasCredits(userId, credits.CREDIT_COSTS.CHAT))) {
+      throw new AppError('Créditos insuficientes.', 402, 'INSUFFICIENT_CREDITS');
+    }
+
+    // Resolve/garante conversa (isolada por usuário).
+    let conversation;
+    if (body.conversationId) {
+      conversation = await prisma.conversation.findFirst({
+        where: { id: body.conversationId, userId },
+      });
+      if (!conversation) throw NotFound('Conversa não encontrada.');
+    } else {
+      conversation = await prisma.conversation.create({
+        data: {
+          userId,
+          projectId: body.projectId || null,
+          title: body.message.slice(0, 60),
+        },
+      });
+    }
+
+    // Projeto (contexto automático).
+    let project = null;
+    if (conversation.projectId) {
+      project = await prisma.project.findFirst({
+        where: { id: conversation.projectId, userId },
+      });
+    }
+
+    // Anexos: valida posse e separa imagens.
+    let attachmentAssets = [];
+    if (body.attachments?.length) {
+      attachmentAssets = await prisma.fileAsset.findMany({
+        where: { id: { in: body.attachments }, userId },
+      });
+    }
+    const hasImages = attachmentAssets.some((a) => a.kind === 'image');
+    const hasFiles = attachmentAssets.some((a) => a.kind !== 'image');
+
+    // Persiste a mensagem do usuário.
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'USER',
+        content: body.message,
+        attachments: JSON.stringify(attachmentAssets.map((a) => ({ id: a.id, filename: a.filename, kind: a.kind }))),
+      },
+    });
+
+    // Histórico recente (limitado para controlar contexto/custo).
+    const prior = await prisma.message.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: 'desc' },
+      take: 12,
+    });
+    const history = prior
+      .reverse()
+      .filter((m) => m.role === 'USER' || m.role === 'ASSISTANT')
+      .slice(0, -1) // remove a mensagem atual (já será enviada separadamente)
+      .map((m) => ({ role: m.role.toLowerCase(), content: m.content }));
+
+    // Memória relevante.
+    const memory = await recall({
+      userId,
+      projectId: conversation.projectId,
+      query: body.message,
+      limit: 6,
+    }).catch(() => []);
+
+    // --- Inicia SSE ---
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const send = (event, data) =>
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+    send('meta', { conversationId: conversation.id });
+
+    const started = Date.now();
+
+    // 1) Planejamento (orquestrador).
+    send('status', { status: 'analisando' });
+    const planObj = await buildPlan({
+      userMessage: body.message,
+      projectName: project?.name,
+      hasFiles,
+      hasImages,
+    });
+    send('plan', {
+      intent: planObj.intent,
+      agents: planObj.agents,
+      complexity: planObj.complexity,
+    });
+
+    // Clarification: devolve pergunta sem executar.
+    if (planObj.clarificationNeeded) {
+      send('status', { status: 'aguardando' });
+      const clarifyText = planObj.clarificationNeeded;
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          role: 'ASSISTANT',
+          content: clarifyText,
+          meta: JSON.stringify({ clarification: true, plan: planObj }),
+        },
+      });
+      send('delta', { text: clarifyText });
+      send('done', { conversationId: conversation.id, clarification: true });
+      return res.end();
+    }
+
+    // Permissões por plano (todas liberadas por padrão neste build).
+    const allow = new Set(['search', 'image', 'files']);
+
+    // 2) Execução + síntese em streaming.
+    const ctx = {
+      userId,
+      projectId: conversation.projectId,
+      allow,
+      confirmed: Boolean(body.confirmed),
+      project,
+      memory,
+      onEvent: (ev) => send('event', ev),
+    };
+
+    const result = await runPlan({
+      history,
+      userMessage: body.message,
+      plan: planObj,
+      ctx,
+      onDelta: (text) => send('delta', { text }),
+    });
+
+    // 3) Persiste resposta.
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: result.text,
+        meta: JSON.stringify({
+          agents: planObj.agents,
+          agentResults: result.agentResults?.map((a) => ({ agent: a.agent, ok: !a.error })),
+          model: result.model,
+        }),
+      },
+    });
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+
+    // 4) Débito de créditos (após produzir resultado) + registro de uso.
+    const latencyMs = Date.now() - started;
+    try {
+      await credits.debit(userId, 'CHAT', credits.CREDIT_COSTS.CHAT, {
+        conversationId: conversation.id,
+      });
+    } catch { /* saldo mudou no meio; não bloqueia a resposta já entregue */ }
+
+    await recordUsage({
+      userId,
+      projectId: conversation.projectId,
+      kind: 'chat',
+      model: result.model,
+      agent: planObj.agents.join(','),
+      usage: result.usage,
+      costMicroUsd: estimateCostMicroUsd(result.model, result.usage),
+      latencyMs,
+    });
+
+    // 5) Memória: guarda um resumo curto do turno (para contexto futuro).
+    if (planObj.complexity === 'complex') {
+      remember({
+        userId,
+        projectId: conversation.projectId,
+        scope: conversation.projectId ? 'PROJECT' : 'USER',
+        content: `Pedido: ${body.message.slice(0, 200)}`,
+        importance: 1.5,
+      }).catch(() => {});
+    }
+
+    send('done', { conversationId: conversation.id, creditsLeft: await credits.getBalance(userId) });
+    res.end();
+  } catch (e) {
+    // Se o SSE já começou, envia erro pelo stream; senão, delega ao handler.
+    if (res.headersSent) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`);
+      return res.end();
+    }
+    next(e);
+  }
+});
+
+export default chatRouter;
