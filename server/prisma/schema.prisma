@@ -305,6 +305,19 @@ model PromptTemplate {
 }
 
 // ---------------------------------------------------------------------------
+// Configuração GLOBAL da plataforma (apenas Admin edita).
+// Guarda o PROMPT BASE GLOBAL, entre outras configs chave-valor.
+// Começa VAZIO. O conteúdo é definido exclusivamente pela dona da plataforma.
+// ---------------------------------------------------------------------------
+
+model GlobalSetting {
+  key       String   @id   // ex: "ai.base_prompt"
+  value     String   @default("")
+  updatedAt DateTime @updatedAt @default(now())
+  updatedBy String?        // userId do admin que alterou
+}
+
+// ---------------------------------------------------------------------------
 // Integrações externas (estado real; nenhuma falsa)
 // ---------------------------------------------------------------------------
 

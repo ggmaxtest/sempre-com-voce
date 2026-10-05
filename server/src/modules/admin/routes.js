@@ -8,9 +8,29 @@ import { AGENT_NAMES } from '../../ai/agents/index.js';
 import { getIntegrationsStatus } from '../integrations/service.js';
 import { hasOpenAI } from '../../config/index.js';
 import * as credits from '../credits/service.js';
+import * as settings from '../settings/service.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
+
+// --- PROMPT BASE GLOBAL (somente Admin) ---
+// GET: lê o prompt base atual (começa vazio).
+adminRouter.get('/base-prompt', async (req, res, next) => {
+  try {
+    const value = await settings.getBasePrompt();
+    res.json({ basePrompt: value });
+  } catch (e) { next(e); }
+});
+
+// PUT: define/edita o prompt base global. Vale para TODOS os clientes.
+adminRouter.put('/base-prompt', async (req, res, next) => {
+  try {
+    const schema = z.object({ basePrompt: z.string().max(20000) });
+    const { basePrompt } = schema.parse(req.body);
+    await settings.setBasePrompt(basePrompt, req.user.id);
+    res.json({ ok: true, length: basePrompt.length });
+  } catch (e) { next(e); }
+});
 
 // --- Usuários ---
 adminRouter.get('/users', async (req, res, next) => {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 
-const TABS = ['Visão geral', 'Usuários', 'Uso & Custos', 'Integrações', 'Agentes & Tools', 'Saúde'];
+const TABS = ['Visão geral', 'Prompt Base', 'Usuários', 'Uso & Custos', 'Integrações', 'Agentes & Tools', 'Saúde'];
 
 export default function Admin() {
   const [tab, setTab] = useState('Visão geral');
@@ -14,11 +14,64 @@ export default function Admin() {
         ))}
       </div>
       {tab === 'Visão geral' && <Overview />}
+      {tab === 'Prompt Base' && <BasePrompt />}
       {tab === 'Usuários' && <Users />}
       {tab === 'Uso & Custos' && <Usage />}
       {tab === 'Integrações' && <Integrations />}
       {tab === 'Agentes & Tools' && <AgentsTools />}
       {tab === 'Saúde' && <Health />}
+    </div>
+  );
+}
+
+// PROMPT BASE GLOBAL — somente a dona da plataforma edita. Começa vazio.
+function BasePrompt() {
+  const [value, setValue] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api.get('/admin/base-prompt')
+      .then((d) => { setValue(d.basePrompt || ''); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.put('/admin/base-prompt', { basePrompt: value });
+      setSaved(true); setTimeout(() => setSaved(false), 1800);
+    } finally { setSaving(false); }
+  }
+
+  if (!loaded) return <span className="spinner" />;
+
+  return (
+    <div className="card">
+      <h3 style={{ marginBottom: 6 }}>Prompt Base Global da IA</h3>
+      <p style={{ color: 'var(--text-dim)', fontSize: 14, marginBottom: 14 }}>
+        Define o comportamento, a personalidade, as regras e os padrões de resposta da IA
+        para <b>todos os clientes</b>. Apenas você (administração) pode editar. O contexto do
+        negócio/nicho que cada cliente fornece é aplicado <b>por cima</b> deste prompt, sem substituí-lo.
+      </p>
+      <div className="field">
+        <label>Conteúdo do Prompt Base</label>
+        <textarea
+          className="textarea"
+          rows={16}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Escreva aqui como a IA deve se comportar, responder e seguir as regras da plataforma…"
+          style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13.5, lineHeight: 1.6 }}
+        />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>
+          {saving ? <span className="spinner" /> : saved ? 'Salvo ✓' : 'Salvar Prompt Base'}
+        </button>
+        <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>{value.length} caracteres</span>
+      </div>
     </div>
   );
 }

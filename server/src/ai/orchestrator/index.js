@@ -96,8 +96,16 @@ export async function execute({ history, userMessage, plan, ctx, onDelta }) {
   const emit = ctx.onEvent || (() => {});
   const agentResults = [];
 
-  // Monta o contexto base (system principal + marca + projeto + memória relevante).
+  // Monta o contexto por CAMADAS, respeitando a hierarquia de instruções:
+  // 1) SYSTEM (segurança) → 2) PROMPT BASE GLOBAL (admin) → 3) MARCA/CLIENTE
+  // → 4) PROJETO → 5) CONVERSA. As camadas 2–4 entram como system de menor
+  // prioridade que o SYSTEM fixo, mas servem de contexto para o modelo.
   const contextBlocks = [];
+  if (ctx.basePrompt && ctx.basePrompt.trim()) {
+    contextBlocks.push(
+      `Instruções base da plataforma (definidas pela administração):\n${ctx.basePrompt.trim()}`,
+    );
+  }
   if (ctx.brandContext) {
     contextBlocks.push(ctx.brandContext);
   }

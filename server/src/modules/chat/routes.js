@@ -18,6 +18,7 @@ import {
 } from '../../ai/prompts/quick-actions.js';
 import * as taskService from '../tasks/service.js';
 import { getEffectiveBrand, renderBrandContext } from '../brand/service.js';
+import * as settings from '../settings/service.js';
 
 export const chatRouter = Router();
 
@@ -165,6 +166,9 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
     const brandProfile = await getEffectiveBrand(userId, conversation.projectId).catch(() => null);
     const brandContext = renderBrandContext(brandProfile);
 
+    // PROMPT BASE GLOBAL (definido pela dona da plataforma no Admin; pode estar vazio).
+    const basePrompt = await settings.getBasePrompt().catch(() => '');
+
     // --- Inicia SSE ---
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -243,6 +247,7 @@ chatRouter.post('/send', requireAuth, async (req, res, next) => {
       project,
       memory,
       brandContext,
+      basePrompt,
       onEvent: (ev) => {
         send('event', ev);
         // Registra eventos REAIS na tarefa (nunca fictício).
